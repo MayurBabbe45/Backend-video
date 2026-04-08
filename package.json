@@ -7,7 +7,7 @@
     "backend"
   ],
   "license": "ISC",
-  "author": "Mayur",
+  "author": "Mayur Babbe",
   "type": "module",
   "main": "index.js",
   "scripts": {
@@ -15,6 +15,7 @@
     "dev": "nodemon src/index.js"
   },
   "devDependencies": {
-    "nodemon": "^3.1.14"
+    "nodemon": "^3.1.14",
+    "prettier": "^3.8.1"
   }
 }
