@@ -1,3 +1,3 @@
 # Big Backend Project
 
-This project is a backend for a big project. 
+This project is a backend for a video sharing platform. 

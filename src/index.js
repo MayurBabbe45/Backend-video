@@ -8,6 +8,7 @@ dotenv.config({
     path:'./env'
 })
 
+//Mongo DB connection + server start
 connectDB()
 .then(()=>{
     app.listen(process.env.PORT||8000,()=>{
