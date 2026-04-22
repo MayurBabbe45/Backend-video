@@ -144,7 +144,7 @@ const loginUser = asyncHandler(async(req, res) => {
 const logoutUser = asyncHandler(async(req,res)=>{
     await User.findByIdAndUpdate(req.user._id,
         {
-            $set: {refreshToken: undefined}
+            $unset: {refreshToken: 1}//this will remove the refresh token from the user document in the database.
         },
         {new:true}
     )
