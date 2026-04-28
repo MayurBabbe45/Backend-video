@@ -1,3 +1,45 @@
+import mongoose from "mongoose";
+import { Subscription } from "../models/subscription.model.js";
+import { ApiError } from "../utils/ApiError.js";
+import { ApiResponse } from "../utils/ApiResponse.js";
+import { asyncHandler } from "../utils/asyncHandler.js";
+
+// 1. Toggle Subscription
+export const toggleSubscription = asyncHandler(async (req, res) => {
+    const { channelId } = req.params;
+
+    if (!mongoose.isValidObjectId(channelId)) {
+        throw new ApiError(400, "Invalid channel ID");
+    }
+
+    if (channelId.toString() === req.user._id.toString()) {
+        throw new ApiError(400, "You cannot subscribe to your own channel");
+    }
+
+    const existingSubscription = await Subscription.findOne({
+        subscriber: req.user._id,
+        channel: channelId
+    });
+
+    if (existingSubscription) {
+        await Subscription.findByIdAndDelete(existingSubscription._id);
+        
+        return res.status(200).json(
+            new ApiResponse(200, { subscribed: false }, "Unsubscribed successfully")
+        );
+    } else {
+        await Subscription.create({
+            subscriber: req.user._id,
+            channel: channelId
+        });
+
+        return res.status(200).json(
+            new ApiResponse(200, { subscribed: true }, "Subscribed successfully")
+        );
+    }
+});
+
+// 2. Get Channel Subscribers
 export const getUserChannelSubscribers = asyncHandler(async (req, res) => {
     const { channelId } = req.params;
 
@@ -6,13 +48,11 @@ export const getUserChannelSubscribers = asyncHandler(async (req, res) => {
     }
 
     const subscribers = await Subscription.aggregate([
-        // 1. Find all subscriptions where the 'channel' matches the ID
         {
             $match: {
                 channel: new mongoose.Types.ObjectId(channelId)
             }
         },
-        // 2. Look up the user details for the 'subscriber'
         {
             $lookup: {
                 from: "users",
@@ -24,7 +64,6 @@ export const getUserChannelSubscribers = asyncHandler(async (req, res) => {
         {
             $unwind: "$subscriberDetails"
         },
-        // 3. Keep only the safe data
         {
             $project: {
                 _id: 1,
@@ -41,6 +80,7 @@ export const getUserChannelSubscribers = asyncHandler(async (req, res) => {
     );
 });
 
+// 3. Get Subscribed Channels
 export const getSubscribedChannels = asyncHandler(async (req, res) => {
     const { subscriberId } = req.params;
 
@@ -49,13 +89,11 @@ export const getSubscribedChannels = asyncHandler(async (req, res) => {
     }
 
     const subscribedChannels = await Subscription.aggregate([
-        // 1. Find all subscriptions where the 'subscriber' matches the ID
         {
             $match: {
                 subscriber: new mongoose.Types.ObjectId(subscriberId)
             }
         },
-        // 2. Look up the user details for the 'channel'
         {
             $lookup: {
                 from: "users",
@@ -67,7 +105,6 @@ export const getSubscribedChannels = asyncHandler(async (req, res) => {
         {
             $unwind: "$channelDetails"
         },
-        // 3. Keep only the safe data
         {
             $project: {
                 _id: 1,
