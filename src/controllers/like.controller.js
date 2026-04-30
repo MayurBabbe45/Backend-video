@@ -108,3 +108,29 @@ export const getLikedVideos = asyncHandler(async (req, res) => {
         new ApiResponse(200, likedVideos, "Liked videos fetched successfully")
     );
 });
+
+// 4. Toggle Tweet Like
+export const toggleTweetLike = asyncHandler(async (req, res) => {
+    const { tweetId } = req.params;
+
+    if (!isValidObjectId(tweetId)) {
+        throw new ApiError(400, "Invalid tweet ID");
+    }
+
+    const alreadyLiked = await Like.findOne({
+        tweet: tweetId,
+        likedBy: req.user._id
+    });
+
+    if (alreadyLiked) {
+        await Like.findByIdAndDelete(alreadyLiked._id);
+        return res.status(200).json(new ApiResponse(200, { isLiked: false }, "Removed like from tweet"));
+    }
+
+    await Like.create({
+        tweet: tweetId,
+        likedBy: req.user._id
+    });
+
+    return res.status(200).json(new ApiResponse(200, { isLiked: true }, "Liked tweet successfully"));
+});
