@@ -29,6 +29,8 @@ export const addComment = asyncHandler(async (req, res) => {
         throw new ApiError(500, "Failed to add comment, please try again");
     }
 
+    await comment.populate("owner", "username avatar fullName");
+
     return res.status(201).json(
         new ApiResponse(201, comment, "Comment added successfully")
     );
@@ -54,28 +56,28 @@ export const getVideoComments = asyncHandler(async (req, res) => {
         },
         {
             $lookup: {
-                from: "users",         // Grab data from the users collection
-                localField: "owner",   // Match the comment's owner ID...
-                foreignField: "_id",   // ...to the user's _id
-                as: "ownerDetails"
+                from: "users",         
+                localField: "owner",   
+                foreignField: "_id",   
+                as: "owner"            // 🚨 CHANGED from "ownerDetails" to "owner"
             }
         },
         {
-            $unwind: "$ownerDetails"
+            $unwind: "$owner"          // 🚨 CHANGED to match above
         },
         {
             $sort: {
-                createdAt: -1 // Show the newest comments at the top
+                createdAt: -1 
             }
         },
         {
             $project: {
                 content: 1,
                 createdAt: 1,
-                // Only send safe user data to the frontend
-                "ownerDetails.username": 1,
-                "ownerDetails.avatar": 1,
-                "ownerDetails.fullName": 1
+                "owner._id": 1,        // 🚨 ADDED so Edit/Delete buttons know who owns it!
+                "owner.username": 1,
+                "owner.avatar": 1,
+                "owner.fullName": 1
             }
         },
         {
@@ -123,6 +125,8 @@ export const updateComment = asyncHandler(async (req, res) => {
         },
         { new: true }
     );
+
+    await updatedComment.populate("owner", "username avatar fullName");
 
     return res.status(200).json(
         new ApiResponse(200, updatedComment, "Comment updated successfully")

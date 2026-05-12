@@ -43,12 +43,12 @@ export const getAllVideos = asyncHandler(async (req, res) => {
             from: "users", // The exact name of your collection in MongoDB
             localField: "owner",
             foreignField: "_id",
-            as: "ownerDetails"
+            as: "owner"
         }
     });
 
-    // 4. Unwind Stage: Turn the ownerDetails array into a single object
-    pipeline.push({ $unwind: "$ownerDetails" });
+    // 4. Unwind Stage: Turn the owner array into a single object
+    pipeline.push({ $unwind: "$owner" });
 
     // 5. Sort Stage: Dynamically sort (e.g., by views, or createdAt)
     pipeline.push({
@@ -69,9 +69,9 @@ export const getAllVideos = asyncHandler(async (req, res) => {
             views: 1,
             createdAt: 1,
             // Only send necessary user info, NEVER send passwords or tokens
-            "ownerDetails.username": 1,
-            "ownerDetails.avatar": 1,
-            "ownerDetails.fullName": 1
+            "owner.username": 1,
+            "owner.avatar": 1,
+            "owner.fullName": 1
         }
     });
 
@@ -155,11 +155,11 @@ export const getVideoById = asyncHandler(async (req, res) => {
                 from: "users",
                 localField: "owner",
                 foreignField: "_id",
-                as: "ownerDetails"
+                as: "owner"            // 🚨 CHANGED
             }
         },
         {
-            $unwind: "$ownerDetails"
+            $unwind: "$owner"          // 🚨 CHANGED
         },
         {
             $project: {
@@ -170,10 +170,12 @@ export const getVideoById = asyncHandler(async (req, res) => {
                 duration: 1,
                 views: 1,
                 createdAt: 1,
-                // Only send safe user data
-                "ownerDetails.username": 1,
-                "ownerDetails.avatar": 1,
-                "ownerDetails.fullName": 1
+                
+                // 🚨 CHANGED
+                "owner._id": 1,
+                "owner.username": 1,
+                "owner.avatar": 1,
+                "owner.fullName": 1
             }
         }
     ]);
