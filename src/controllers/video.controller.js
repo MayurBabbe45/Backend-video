@@ -4,6 +4,7 @@ import { ApiError } from "../utils/ApiError.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import { deleteFromCloudinary, uploadOnCloudinary } from "../utils/cloudinary.js";
+import jwt from "jsonwebtoken";
 
 export const getAllVideos = asyncHandler(async (req, res) => {
     // 1. Extract query parameters with default fallbacks
@@ -69,6 +70,7 @@ export const getAllVideos = asyncHandler(async (req, res) => {
             views: 1,
             createdAt: 1,
             // Only send necessary user info, NEVER send passwords or tokens
+            "owner._id": 1,
             "owner.username": 1,
             "owner.avatar": 1,
             "owner.fullName": 1
@@ -138,16 +140,39 @@ export const publishAVideo = asyncHandler(async (req, res) => {
 export const getVideoById = asyncHandler(async (req, res) => {
     const { videoId } = req.params;
 
-    // 1. Check if the ID is a valid MongoDB ObjectId to prevent crashes
     if (!mongoose.isValidObjectId(videoId)) {
         throw new ApiError(400, "Invalid Video ID format");
     }
 
-    // 2. Fetch the video and join the channel owner's details
+    // --- 🚨 OPTIONAL AUTH CHECK 🚨 ---
+    // Because watching a video is public, req.user is undefined.
+    // We manually decode the token here to see if a user happens to be logged in.
+    let userId = null;
+    const token = req.cookies?.accessToken || req.header("Authorization")?.replace("Bearer ", "");
+    
+    if (token) {
+        try {
+            const decodedToken = jwt.verify(token, process.env.ACCESS_TOKEN_SECRET);
+            userId = new mongoose.Types.ObjectId(decodedToken._id);
+        } catch (error) {
+            // Token is missing or expired, do nothing (treat as a guest viewer)
+        }
+    }
+    // ----------------------------------
+
     const video = await Video.aggregate([
         {
             $match: {
                 _id: new mongoose.Types.ObjectId(videoId)
+            }
+        },
+        // Look up the subscriptions BEFORE we unwind the owner
+        {
+            $lookup: {
+                from: "subscriptions",
+                localField: "owner",
+                foreignField: "channel",
+                as: "subscribers"
             }
         },
         {
@@ -155,11 +180,25 @@ export const getVideoById = asyncHandler(async (req, res) => {
                 from: "users",
                 localField: "owner",
                 foreignField: "_id",
-                as: "owner"            // 🚨 CHANGED
+                as: "owner"            
             }
         },
         {
-            $unwind: "$owner"          // 🚨 CHANGED
+            $unwind: "$owner"          
+        },
+        {
+            $addFields: {
+                isSubscribed: {
+                    $cond: {
+                        if: { 
+                            // 🚨 We use our manually extracted userId here!
+                            $in: [userId, "$subscribers.subscriber"] 
+                        },
+                        then: true,
+                        else: false
+                    }
+                }
+            }
         },
         {
             $project: {
@@ -170,8 +209,7 @@ export const getVideoById = asyncHandler(async (req, res) => {
                 duration: 1,
                 views: 1,
                 createdAt: 1,
-                
-                // 🚨 CHANGED
+                isSubscribed: 1, 
                 "owner._id": 1,
                 "owner.username": 1,
                 "owner.avatar": 1,
@@ -179,20 +217,19 @@ export const getVideoById = asyncHandler(async (req, res) => {
             }
         }
     ]);
-
+    
     if (!video?.length) {
         throw new ApiError(404, "Video not found");
     }
 
-    // 3. Increment the view count in the database
+    // Increment the view count in the database
     await Video.findByIdAndUpdate(
         videoId,
         {
-            $inc: { views: 1 } // $inc mathematically adds 1 to the current value
+            $inc: { views: 1 } 
         }
     );
 
-    // Note: The aggregate pipeline returns an array, so we send the first item: video[0]
     return res.status(200).json(
         new ApiResponse(200, video[0], "Video fetched successfully")
     );

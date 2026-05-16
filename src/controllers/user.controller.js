@@ -4,6 +4,7 @@ import  User  from "../models/user.model.js";
 import { uploadOnCloudinary, deleteFromCloudinary } from "../utils/cloudinary.js"
 import { ApiResponse } from '../utils/ApiResponse.js';
 import jwt from "jsonwebtoken"
+import mongoose from "mongoose"
 
 
 const generateAccessAndRefreshTokens = async(userId)=>{
@@ -336,70 +337,81 @@ const updateUserCoverImage = asyncHandler(async(req,res)=>{
 
 })
 
-const getUserChannelProfile = asyncHandler(async(req,res)=>{
-    
-    const {username} = req.params;
-    if(!username?.trim()){
-        throw new ApiError(400,"Username is missing")
+const getUserChannelProfile = asyncHandler(async (req, res) => {
+    const { username } = req.params;
+
+    if (!username?.trim()) {
+        throw new ApiError(400, "Username is required");
     }
 
-    const channel =  await User.aggregate([
+    const channel = await User.aggregate([
         {
             $match: {
                 username: username?.toLowerCase()
             }
         },
+        // 1. Lookup subscribers (Users who subscribed to this channel)
         {
             $lookup: {
-                from: "Subscriptions",
+                from: "subscriptions",
                 localField: "_id",
                 foreignField: "channel",
                 as: "subscribers"
             }
         },
+        // 2. Lookup channels this user is subscribed to
         {
             $lookup: {
-                from: "Subscriptions",
+                from: "subscriptions",
                 localField: "_id",
                 foreignField: "subscriber",
                 as: "subscribedTo"
             }
         },
+        // 3. Calculate counts and the isSubscribed boolean
         {
             $addFields: {
-                subscribersCount: {$size: "$subscribers"},
-                channelsSubscribedToCount: {$size: "$subscribedTo"},
+                subscribersCount: {
+                    $size: "$subscribers"
+                },
+                channelsSubscribedToCount: {
+                    $size: "$subscribedTo"
+                },
                 isSubscribed: {
-                   $cond: {
-                    if: {$in: [req.user?._id, "$subscribers.subscriber"]},
-                    then: true,
-                    else: false
-                   }
+                    $cond: {
+                        if: { 
+                            // Check if logged-in user is in the subscribers array
+                            $in: [req.user?._id || null, "$subscribers.subscriber"] 
+                        },
+                        then: true,
+                        else: false
+                    }
                 }
             }
-        },{
+        },
+        // 4. Project only the necessary fields to the frontend
+        {
             $project: {
                 fullName: 1,
                 username: 1,
-                subscribersCount: 1,
-                channelsSubscribedToCount: 1,
-                isSubscribed: 1,
                 avatar: 1,
                 coverImage: 1,
-                email:1,
-
+                email: 1, // Optional depending on your privacy needs
+                subscribersCount: 1,
+                channelsSubscribedToCount: 1,
+                isSubscribed: 1 // 🚨 CRITICAL: The boolean we just calculated!
             }
         }
-    ])
+    ]);
 
-    if(!channel?.length){
-        throw new ApiError(404,"Channel not found")
+    if (!channel?.length) {
+        throw new ApiError(404, "Channel does not exist");
     }
 
-    return res
-    .status(200)
-    .json(new ApiResponse(200,channel[0],"User Channel profile fetched successfully"))
-})
+    return res.status(200).json(
+        new ApiResponse(200, channel[0], "User channel fetched successfully")
+    );
+});
 
 const getWatchHistory = asyncHandler(async(req,res)=>{
     const user = await User.aggregate([
