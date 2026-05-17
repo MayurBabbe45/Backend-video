@@ -186,13 +186,35 @@ export const getVideoById = asyncHandler(async (req, res) => {
         {
             $unwind: "$owner"          
         },
+        // 🚨 NEW: Look up the Likes for this video 🚨
+        {
+            $lookup: {
+                from: "likes",
+                localField: "_id",
+                foreignField: "video", // Assuming your like model uses "video" to store the video ID
+                as: "likes"
+            }
+        },
         {
             $addFields: {
                 isSubscribed: {
                     $cond: {
                         if: { 
-                            // 🚨 We use our manually extracted userId here!
+                            // We use our manually extracted userId here!
                             $in: [userId, "$subscribers.subscriber"] 
+                        },
+                        then: true,
+                        else: false
+                    }
+                },
+                // 🚨 NEW: Calculate total likes and check if the logged-in user liked it 🚨
+                likesCount: {
+                    $size: "$likes"
+                },
+                isLiked: {
+                    $cond: {
+                        if: { 
+                            $in: [userId, "$likes.likedBy"] 
                         },
                         then: true,
                         else: false
@@ -210,6 +232,9 @@ export const getVideoById = asyncHandler(async (req, res) => {
                 views: 1,
                 createdAt: 1,
                 isSubscribed: 1, 
+                // 🚨 NEW: Project likes data to frontend 🚨
+                likesCount: 1,
+                isLiked: 1,
                 "owner._id": 1,
                 "owner.username": 1,
                 "owner.avatar": 1,
