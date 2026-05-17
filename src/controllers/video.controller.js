@@ -5,6 +5,7 @@ import { ApiResponse } from "../utils/ApiResponse.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import { deleteFromCloudinary, uploadOnCloudinary } from "../utils/cloudinary.js";
 import jwt from "jsonwebtoken";
+import  User  from "../models/user.model.js";
 
 export const getAllVideos = asyncHandler(async (req, res) => {
     // 1. Extract query parameters with default fallbacks
@@ -254,6 +255,20 @@ export const getVideoById = asyncHandler(async (req, res) => {
             $inc: { views: 1 } 
         }
     );
+
+    // --- 🚨 OPTIONAL AUTH CHECK 🚨 ---
+    // If a user is logged in, update their watch history
+    if (userId) {
+        // We do a clever two-step trick here: 
+        // First we $pull (remove) the video if it's already in their history.
+        // Then we $push it to the end. This brings re-watched videos back to the top!
+        await User.findByIdAndUpdate(userId, {
+            $pull: { watchHistory: videoId }
+        });
+        await User.findByIdAndUpdate(userId, {
+            $push: { watchHistory: videoId }
+        });
+    }
 
     return res.status(200).json(
         new ApiResponse(200, video[0], "Video fetched successfully")

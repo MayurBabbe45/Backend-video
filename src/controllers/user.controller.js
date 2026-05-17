@@ -413,57 +413,65 @@ const getUserChannelProfile = asyncHandler(async (req, res) => {
     );
 });
 
-const getWatchHistory = asyncHandler(async(req,res)=>{
+ const getWatchHistory = asyncHandler(async (req, res) => {
     const user = await User.aggregate([
         {
             $match: {
-                _id: new mongoose.Types.ObjectId(req.user?._id)
-            },
-          
+                _id: new mongoose.Types.ObjectId(req.user._id)
+            }
         },
         {
-              
+            // This is a powerful sub-pipeline. We lookup the videos, 
+            // and while we have them, we lookup the channel owner of each video!
             $lookup: {
-                    from: "Videos",
-                    localField: "watchHistory",
-                    foreignField: "_id",
-                    as: "watchHistory",
-                    pipeline: [
-                        {
-                            $lookup: {
-                                from: "Users",
-                                localField: "owner",
-                                foreignField: "_id",
-                                as: "owner",
-                                pipeline: [
-                                    {
-                                        $project: {
-                                            fullName: 1,
-                                            username: 1,
-                                            avatar: 1
-                                        }
-                                    }
-                                ]
-                            }
-                        },
-                        {
-                            $addFields: {
-                                owner:{
-                                    $first: "$owner"
-                                }
-                            }
+                from: "videos",
+                localField: "watchHistory",
+                foreignField: "_id",
+                as: "watchHistory",
+                pipeline: [
+                    {
+                        $lookup: {
+                            from: "users",
+                            localField: "owner",
+                            foreignField: "_id",
+                            as: "owner"
                         }
-                    ]
-            },
-            
+                    },
+                    {
+                        $unwind: "$owner"
+                    },
+                    {
+                        $project: {
+                            title: 1,
+                            thumbnail: 1,
+                            duration: 1,
+                            views: 1,
+                            createdAt: 1,
+                            "owner._id": 1,
+                            "owner.username": 1,
+                            "owner.fullName": 1,
+                            "owner.avatar": 1
+                        }
+                    }
+                ]
+            }
         }
+    ]);
 
-    ])
+    if (!user?.length) {
+        throw new ApiError(404, "User not found");
+    }
 
-    return res
-    .status(200)
-    .json(new ApiResponse(200,user,"Watch history fetched successfully"))
-})
+    // Since we pushed new videos to the END of the array in MongoDB, 
+    // we reverse it here so the most recently watched video is at the top!
+    const history = user[0].watchHistory.reverse();
+
+    return res.status(200).json(
+        new ApiResponse(200, history, "Watch history fetched successfully")
+    );
+});
+
+
 
 export {
     registerUser,
@@ -476,5 +484,6 @@ export {
     updateUserAvatar,
     updateUserCoverImage,
     getUserChannelProfile,
-    getWatchHistory
+    getWatchHistory,
+    
 }
