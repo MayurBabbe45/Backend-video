@@ -28,7 +28,7 @@ export const createPlaylist = asyncHandler(async (req, res) => {
     );
 });
 
-// 2. Get User Playlists
+// 2. Get All Playlists for a User (with video details)
 export const getUserPlaylists = asyncHandler(async (req, res) => {
     const { userId } = req.params;
 
@@ -57,10 +57,12 @@ export const getUserPlaylists = asyncHandler(async (req, res) => {
             }
         },
         {
+            // 🚨 FIX HERE: Explicitly include videos in the projection
             $project: {
                 _id: 1,
                 name: 1,
                 description: 1,
+                videos: 1, // 👈 Add this line!
                 totalVideos: 1,
                 totalViews: 1,
                 updatedAt: 1
@@ -72,7 +74,6 @@ export const getUserPlaylists = asyncHandler(async (req, res) => {
         new ApiResponse(200, playlists, "User playlists fetched successfully")
     );
 });
-
 // 3. Get Playlist By ID (with populated videos)
 export const getPlaylistById = asyncHandler(async (req, res) => {
     const { playlistId } = req.params;
