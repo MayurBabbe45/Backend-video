@@ -471,6 +471,17 @@ const getUserChannelProfile = asyncHandler(async (req, res) => {
     );
 });
 
+ const clearWatchHistory = asyncHandler(async (req, res) => {
+    // Simply set the watchHistory array back to empty!
+    await User.findByIdAndUpdate(req.user._id, {
+        $set: { watchHistory: [] }
+    });
+
+    return res.status(200).json(
+        new ApiResponse(200, {}, "Watch history cleared successfully")
+    );
+});
+
 
 
 export {
@@ -485,5 +496,5 @@ export {
     updateUserCoverImage,
     getUserChannelProfile,
     getWatchHistory,
-    
+    clearWatchHistory
 }
