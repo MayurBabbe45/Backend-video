@@ -15,11 +15,20 @@ const uploadOnCloudinary = async (localFilePath) => {
             resource_type: "auto"
         });
 
-        fs.unlinkSync(localFilePath); 
+        // Safely delete the local file
+        if (fs.existsSync(localFilePath)) {
+            fs.unlinkSync(localFilePath); 
+        }
         return response;
         
     } catch (error) {
-        fs.unlinkSync(localFilePath); 
+        // 🚨 CRITICAL: We need this log to see why your upload is failing!
+        console.error("🔥 CLOUDINARY UPLOAD ERROR DETAILS:", error);
+        
+        // Safely delete the local file
+        if (fs.existsSync(localFilePath)) {
+            fs.unlinkSync(localFilePath); 
+        }
         return null;
     }
 }

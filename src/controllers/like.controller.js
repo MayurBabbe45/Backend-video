@@ -63,12 +63,14 @@ export const toggleCommentLike = asyncHandler(async (req, res) => {
 export const getLikedVideos = asyncHandler(async (req, res) => {
     const likedVideos = await Like.aggregate([
         {
+            // 1. Find all likes by the current logged-in user
             $match: {
                 likedBy: new mongoose.Types.ObjectId(req.user._id),
-                video: { $exists: true, $ne: null } // Only get likes that are attached to a video
+                video: { $exists: true } // Make sure we only get video likes (not comment likes)
             }
         },
         {
+            // 2. Lookup the actual video details from the 'videos' collection
             $lookup: {
                 from: "videos",
                 localField: "video",
@@ -80,6 +82,7 @@ export const getLikedVideos = asyncHandler(async (req, res) => {
             $unwind: "$likedVideo"
         },
         {
+            // 3. Lookup the owner details of that specific video from the 'users' collection
             $lookup: {
                 from: "users",
                 localField: "likedVideo.owner",
@@ -91,15 +94,20 @@ export const getLikedVideos = asyncHandler(async (req, res) => {
             $unwind: "$ownerDetails"
         },
         {
+            // 4. Shape the final output to perfectly match what your frontend VideoCard expects
             $project: {
-                _id: 0,
-                "likedVideo._id": 1,
-                "likedVideo.videoFile": 1,
-                "likedVideo.thumbnail": 1,
-                "likedVideo.title": 1,
-                "likedVideo.views": 1,
-                "ownerDetails.username": 1,
-                "ownerDetails.avatar": 1
+                _id: "$likedVideo._id",
+                title: "$likedVideo.title",
+                thumbnail: "$likedVideo.thumbnail",
+                views: "$likedVideo.views",
+                duration: "$likedVideo.duration",
+                createdAt: "$likedVideo.createdAt",
+                owner: {
+                    _id: "$ownerDetails._id",
+                    username: "$ownerDetails.username",
+                    fullName: "$ownerDetails.fullName",
+                    avatar: "$ownerDetails.avatar"
+                }
             }
         }
     ]);
