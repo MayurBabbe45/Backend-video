@@ -52,6 +52,25 @@ export const getAllVideos = asyncHandler(async (req, res) => {
     // 4. Unwind Stage: Turn the owner array into a single object
     pipeline.push({ $unwind: "$owner" });
 
+    // 🚨 NEW: Lookup Stage to get all likes for this video
+    pipeline.push({
+        $lookup: {
+            from: "likes",
+            localField: "_id",
+            foreignField: "video",
+            as: "likes"
+        }
+    });
+
+    // 🚨 NEW: Add a field that counts the size of the likes array
+    pipeline.push({
+        $addFields: {
+            likesCount: {
+                $size: "$likes"
+            }
+        }
+    });
+
     // 5. Sort Stage: Dynamically sort (e.g., by views, or createdAt)
     pipeline.push({
         $sort: {
@@ -70,6 +89,7 @@ export const getAllVideos = asyncHandler(async (req, res) => {
             duration: 1,
             views: 1,
             createdAt: 1,
+            likesCount: 1, // 🚨 NEW: Make sure to explicitly pass this to the frontend!
             // Only send necessary user info, NEVER send passwords or tokens
             "owner._id": 1,
             "owner.username": 1,
