@@ -82,6 +82,62 @@ export const getPlaylistById = asyncHandler(async (req, res) => {
         throw new ApiError(400, "Invalid playlist ID");
     }
 
+    // 1. Construct the inner pipeline for the playlist's videos
+    const videoPipeline = [
+        {
+            $match: { isPublished: true } // Only evaluate published videos
+        }
+    ];
+
+    // ============================================================================
+    // 🚨 THE ZERO-TRUST BOUNCER (Intercepting Playlist Videos)
+    // ============================================================================
+    if (req.user.role === "EMPLOYEE") {
+        videoPipeline.push({
+            $lookup: {
+                from: "memberships",
+                let: { videoOwnerId: "$owner" },
+                pipeline: [
+                    {
+                        $match: {
+                            $expr: {
+                                $and: [
+                                    { $eq: ["$business", "$$videoOwnerId"] },
+                                    { $eq: ["$employee", new mongoose.Types.ObjectId(req.user._id)] },
+                                    { $eq: ["$status", "APPROVED"] } // Must STILL be approved
+                                ]
+                            }
+                        }
+                    }
+                ],
+                as: "accessRights"
+            }
+        });
+
+        // Drop the video from the playlist array if access was revoked
+        videoPipeline.push({
+            $match: { accessRights: { $ne: [] } }
+        });
+    } else if (req.user.role === "BUSINESS") {
+        videoPipeline.push({
+            $match: { owner: new mongoose.Types.ObjectId(req.user._id) }
+        });
+    }
+    // ============================================================================
+
+    // Format the video objects
+    videoPipeline.push({
+        $project: {
+            _id: 1,
+            videoFile: 1,
+            thumbnail: 1,
+            title: 1,
+            views: 1,
+            duration: 1
+        }
+    });
+
+    // 2. Run the main aggregation
     const playlist = await Playlist.aggregate([
         {
             $match: {
@@ -93,12 +149,8 @@ export const getPlaylistById = asyncHandler(async (req, res) => {
                 from: "videos",
                 localField: "videos",
                 foreignField: "_id",
-                as: "videos"
-            }
-        },
-        {
-            $match: {
-                "videos.isPublished": true // Only show published videos
+                as: "videos",
+                pipeline: videoPipeline // 🚨 Apply the secure sub-pipeline here!
             }
         },
         {
@@ -116,14 +168,7 @@ export const getPlaylistById = asyncHandler(async (req, res) => {
             $project: {
                 name: 1,
                 description: 1,
-                videos: {
-                    _id: 1,
-                    videoFile: 1,
-                    thumbnail: 1,
-                    title: 1,
-                    views: 1,
-                    duration: 1
-                },
+                videos: 1, // Videos are already cleaned and formatted by the bouncer
                 "ownerDetails.username": 1,
                 "ownerDetails.fullName": 1,
                 "ownerDetails.avatar": 1
@@ -136,7 +181,7 @@ export const getPlaylistById = asyncHandler(async (req, res) => {
     }
 
     return res.status(200).json(
-        new ApiResponse(200, playlist[0], "Playlist fetched successfully")
+        new ApiResponse(200, playlist[0], "Secure playlist fetched successfully")
     );
 });
 

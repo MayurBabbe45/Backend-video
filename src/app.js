@@ -25,6 +25,8 @@ import likeRouter from './routes/like.routes.js'
 import tweetsRouter from './routes/tweet.routes.js'
 import playlistRouter from './routes/playlist.routes.js';
 import dashboardRouter from './routes/dashboard.routes.js';
+import membershipRouter from "./routes/membership.routes.js";
+import progressRouter from "./routes/progress.routes.js";
 
 //routes declaration
 app.use("/api/v1/users",userRouter);
@@ -35,6 +37,7 @@ app.use("/api/v1/likes", likeRouter);
 app.use("/api/v1/tweets", tweetsRouter);
 app.use("/api/v1/playlists", playlistRouter);
 app.use("/api/v1/dashboard", dashboardRouter);
-
+app.use("/api/v1/memberships", membershipRouter);
+app.use("/api/v1/progress", progressRouter);
 
 export { app };

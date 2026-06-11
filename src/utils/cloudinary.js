@@ -12,20 +12,21 @@ const uploadOnCloudinary = async (localFilePath) => {
         if (!localFilePath) return null;
 
         const response = await cloudinary.uploader.upload(localFilePath, {
-            resource_type: "auto"
+            resource_type: "auto",
+            type: "authenticated" // 🚨 THE MAGIC WORD: Locks the file in the CDN Vault
         });
 
         // Safely delete the local file
         if (fs.existsSync(localFilePath)) {
             fs.unlinkSync(localFilePath); 
         }
+        
+        // 🚨 IMPORTANT: The backend MUST save response.public_id to the database!
         return response;
         
     } catch (error) {
-        // 🚨 CRITICAL: We need this log to see why your upload is failing!
         console.error("🔥 CLOUDINARY UPLOAD ERROR DETAILS:", error);
         
-        // Safely delete the local file
         if (fs.existsSync(localFilePath)) {
             fs.unlinkSync(localFilePath); 
         }
@@ -33,31 +34,15 @@ const uploadOnCloudinary = async (localFilePath) => {
     }
 }
 
-// Added resourceType parameter with a default of "image"
-const deleteFromCloudinary = async (fileUrl, resourceType = "image") => {
+// 🚨 UPDATED: Now accepts the exact publicId instead of trying to parse a secure URL
+const deleteFromCloudinary = async (publicId, resourceType = "image") => {
     try {
-        if (!fileUrl) return null;
+        if (!publicId) return null;
         
-        // 1. Split the URL to isolate the part after "/upload/"
-        const parts = fileUrl.split("/upload/");
-        if (parts.length < 2) {
-            console.error("Invalid Cloudinary URL format");
-            return null; 
-        }
-        
-        let pathAfterUpload = parts[1];
-        
-        // 2. Remove the version number (e.g., "v1623456789/") if it exists
-        if (pathAfterUpload.match(/^v\d+\//)) {
-            pathAfterUpload = pathAfterUpload.replace(/^v\d+\//, "");
-        }
-
-        // 3. Remove the file extension (e.g., ".mp4", ".jpg")
-        const publicId = pathAfterUpload.substring(0, pathAfterUpload.lastIndexOf('.'));
-        
-        // 4. Pass the exact resource_type (crucial for videos)
+        // Pass the exact public_id and resource_type
         const response = await cloudinary.uploader.destroy(publicId, {
-            resource_type: resourceType
+            resource_type: resourceType,
+            type: "authenticated" // Tell Cloudinary we are deleting an authenticated file
         });
 
         return response;

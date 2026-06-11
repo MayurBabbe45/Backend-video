@@ -9,6 +9,7 @@ import {
   logoutUser,
   refreshAccessToken,
   registerUser,
+  searchBusinesses,
   updateAccountDetails,
   updateUserAvatar,
   updateUserCoverImage,
@@ -52,4 +53,5 @@ router.route("/c/:username").get(verifyJWT, getUserChannelProfile);
 router.route("/history").get(verifyJWT, getWatchHistory);
 router.route("/history/clear").delete(verifyJWT, clearWatchHistory);
 
+router.route("/businesses/search").get(verifyJWT, searchBusinesses);
 export default router;

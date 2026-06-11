@@ -61,59 +61,103 @@ export const toggleCommentLike = asyncHandler(async (req, res) => {
 
 // 3. Get all videos liked by the current user
 export const getLikedVideos = asyncHandler(async (req, res) => {
-    const likedVideos = await Like.aggregate([
-        {
-            // 1. Find all likes by the current logged-in user
+    const pipeline = [];
+
+    // 1. Find all likes by the current logged-in user
+    pipeline.push({
+        $match: {
+            likedBy: new mongoose.Types.ObjectId(req.user._id),
+            video: { $exists: true } // Make sure we only get video likes
+        }
+    });
+
+    // 2. Lookup the actual video details
+    pipeline.push({
+        $lookup: {
+            from: "videos",
+            localField: "video",
+            foreignField: "_id",
+            as: "likedVideo"
+        }
+    });
+
+    pipeline.push({ $unwind: "$likedVideo" });
+
+    // ============================================================================
+    // 🚨 THE ZERO-TRUST GATING ENGINE (Intercepting Stale Likes)
+    // ============================================================================
+    if (req.user.role === "EMPLOYEE") {
+        pipeline.push({
+            $lookup: {
+                from: "memberships",
+                let: { videoOwnerId: "$likedVideo.owner" }, // Reference the nested owner ID
+                pipeline: [
+                    {
+                        $match: {
+                            $expr: {
+                                $and: [
+                                    { $eq: ["$business", "$$videoOwnerId"] }, 
+                                    { $eq: ["$employee", new mongoose.Types.ObjectId(req.user._id)] }, 
+                                    { $eq: ["$status", "APPROVED"] } // Must STILL be approved
+                                ]
+                            }
+                        }
+                    }
+                ],
+                as: "accessRights"
+            }
+        });
+
+        // The Bouncer: If access was revoked, accessRights is empty, so drop the liked video
+        pipeline.push({
             $match: {
-                likedBy: new mongoose.Types.ObjectId(req.user._id),
-                video: { $exists: true } // Make sure we only get video likes (not comment likes)
+                accessRights: { $ne: [] } 
             }
-        },
-        {
-            // 2. Lookup the actual video details from the 'videos' collection
-            $lookup: {
-                from: "videos",
-                localField: "video",
-                foreignField: "_id",
-                as: "likedVideo"
+        });
+    } else if (req.user.role === "BUSINESS") {
+        // Businesses should only see likes on their own internal media
+        pipeline.push({
+            $match: {
+                "likedVideo.owner": new mongoose.Types.ObjectId(req.user._id)
             }
-        },
-        {
-            $unwind: "$likedVideo"
-        },
-        {
-            // 3. Lookup the owner details of that specific video from the 'users' collection
-            $lookup: {
-                from: "users",
-                localField: "likedVideo.owner",
-                foreignField: "_id",
-                as: "ownerDetails"
-            }
-        },
-        {
-            $unwind: "$ownerDetails"
-        },
-        {
-            // 4. Shape the final output to perfectly match what your frontend VideoCard expects
-            $project: {
-                _id: "$likedVideo._id",
-                title: "$likedVideo.title",
-                thumbnail: "$likedVideo.thumbnail",
-                views: "$likedVideo.views",
-                duration: "$likedVideo.duration",
-                createdAt: "$likedVideo.createdAt",
-                owner: {
-                    _id: "$ownerDetails._id",
-                    username: "$ownerDetails.username",
-                    fullName: "$ownerDetails.fullName",
-                    avatar: "$ownerDetails.avatar"
-                }
+        });
+    }
+    // ============================================================================
+
+    // 3. Lookup the owner details of that specific video
+    pipeline.push({
+        $lookup: {
+            from: "users",
+            localField: "likedVideo.owner",
+            foreignField: "_id",
+            as: "ownerDetails"
+        }
+    });
+
+    pipeline.push({ $unwind: "$ownerDetails" });
+
+    // 4. Shape the final output to perfectly match the frontend VideoCard
+    pipeline.push({
+        $project: {
+            _id: "$likedVideo._id",
+            title: "$likedVideo.title",
+            thumbnail: "$likedVideo.thumbnail",
+            views: "$likedVideo.views",
+            duration: "$likedVideo.duration",
+            createdAt: "$likedVideo.createdAt",
+            owner: {
+                _id: "$ownerDetails._id",
+                username: "$ownerDetails.username",
+                fullName: "$ownerDetails.fullName",
+                avatar: "$ownerDetails.avatar"
             }
         }
-    ]);
+    });
+
+    const likedVideos = await Like.aggregate(pipeline);
 
     return res.status(200).json(
-        new ApiResponse(200, likedVideos, "Liked videos fetched successfully")
+        new ApiResponse(200, likedVideos, "Secure liked videos fetched successfully")
     );
 });
 

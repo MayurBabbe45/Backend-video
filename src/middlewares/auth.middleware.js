@@ -31,3 +31,18 @@ export const verifyJWT = asyncHandler(async(req,_,next)=>{
     throw new ApiError(401,error?.message)
   }
 }) 
+
+export const restrictTo = (...allowedRoles) => {
+    return (req, res, next) => {
+        // verifyJWT runs first, so req.user is already securely populated
+        if (!req.user?.role || !allowedRoles.includes(req.user.role)) {
+            throw new ApiError(
+                403, 
+                "Access Denied: Your account role does not have permission to perform this action."
+            );
+        }
+        
+        // If they have the correct role, let them through!
+        next();
+    };
+};

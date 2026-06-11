@@ -23,16 +23,15 @@ const generateAccessAndRefreshTokens = async(userId)=>{
 }
 
 const registerUser = asyncHandler(async(req, res) => {
-    const { fullName, email, username, password } = req.body;
+    // 🚨 NEW: Extract role from the request body
+    const { fullName, email, username, password, role } = req.body;
   
-    // 1. Validate text fields
     if (
         [fullName, email, username, password].some((field) => field?.trim() === "")
     ) {
         throw new ApiError(400, "All fields are required");
     }
 
-    // 2. Check for existing user
     const existedUser = await User.findOne({
         $or: [{ username }, { email }]
     });
@@ -41,7 +40,6 @@ const registerUser = asyncHandler(async(req, res) => {
         throw new ApiError(409, "User with email or username already exists");
     }
 
-    // 3. Check if Multer actually got the files and saved them to the temp folder
     const avatarLocalPath = req.files?.avatar?.[0]?.path;
     let coverImageLocalPath;
     
@@ -53,11 +51,9 @@ const registerUser = asyncHandler(async(req, res) => {
         throw new ApiError(400, "MULTER ERROR: Avatar file is required but was not received by the server.");
     }
 
-    // 4. Upload to Cloudinary
     const avatar = await uploadOnCloudinary(avatarLocalPath);
     let coverImage = null;
     
-    // Only attempt to upload cover image if one was provided
     if (coverImageLocalPath) {
         coverImage = await uploadOnCloudinary(coverImageLocalPath);
     }
@@ -66,17 +62,17 @@ const registerUser = asyncHandler(async(req, res) => {
         throw new ApiError(400, "CLOUDINARY ERROR: Failed to upload the avatar image to the cloud.");
     }
 
-    // 5. Create user in the database
+    // 🚨 NEW: Save the role to the database
     const user = await User.create({
         fullName,
         avatar: avatar.url,
         coverImage: coverImage?.url || "",
         email,
         password,
-        username: username.toLowerCase()
+        username: username.toLowerCase(),
+        role: role || "EMPLOYEE" // Default to EMPLOYEE if they don't explicitly pass BUSINESS
     });
 
-    // 6. Fetch created user without sensitive data
     const createdUser = await User.findById(user._id).select(
         "-password -refreshToken"
     );
@@ -85,7 +81,6 @@ const registerUser = asyncHandler(async(req, res) => {
         throw new ApiError(500, "Something went wrong while registering the user");
     }
 
-    // 7. Return success response
     return res.status(201).json(
         new ApiResponse(201, createdUser, "User registered successfully")
     );
@@ -417,6 +412,72 @@ const getUserChannelProfile = asyncHandler(async (req, res) => {
 });
 
  const getWatchHistory = asyncHandler(async (req, res) => {
+    // 1. Construct the inner pipeline to process each video in the history
+    const videoPipeline = [
+        {
+            $lookup: {
+                from: "users",
+                localField: "owner",
+                foreignField: "_id",
+                as: "owner"
+            }
+        },
+        { $unwind: "$owner" }
+    ];
+
+    // ============================================================================
+    // 🚨 THE ZERO-TRUST BOUNCER (Intercepting Watch History)
+    // ============================================================================
+    if (req.user.role === "EMPLOYEE") {
+        videoPipeline.push({
+            $lookup: {
+                from: "memberships",
+                let: { videoOwnerId: "$owner._id" }, // Check the populated owner's ID
+                pipeline: [
+                    {
+                        $match: {
+                            $expr: {
+                                $and: [
+                                    { $eq: ["$business", "$$videoOwnerId"] },
+                                    { $eq: ["$employee", new mongoose.Types.ObjectId(req.user._id)] },
+                                    { $eq: ["$status", "APPROVED"] } // Must STILL be approved
+                                ]
+                            }
+                        }
+                    }
+                ],
+                as: "accessRights"
+            }
+        });
+
+        // Drop the video from the history array if access was revoked
+        videoPipeline.push({
+            $match: { accessRights: { $ne: [] } }
+        });
+    } else if (req.user.role === "BUSINESS") {
+        // Businesses only see their own internal media in history
+        videoPipeline.push({
+            $match: { "owner._id": new mongoose.Types.ObjectId(req.user._id) }
+        });
+    }
+    // ============================================================================
+
+    // 2. Add the final formatting to the inner pipeline
+    videoPipeline.push({
+        $project: {
+            title: 1,
+            thumbnail: 1,
+            duration: 1,
+            views: 1,
+            createdAt: 1,
+            "owner._id": 1,
+            "owner.username": 1,
+            "owner.fullName": 1,
+            "owner.avatar": 1
+        }
+    });
+
+    // 3. Run the main aggregation
     const user = await User.aggregate([
         {
             $match: {
@@ -424,39 +485,12 @@ const getUserChannelProfile = asyncHandler(async (req, res) => {
             }
         },
         {
-            // This is a powerful sub-pipeline. We lookup the videos, 
-            // and while we have them, we lookup the channel owner of each video!
             $lookup: {
                 from: "videos",
                 localField: "watchHistory",
                 foreignField: "_id",
                 as: "watchHistory",
-                pipeline: [
-                    {
-                        $lookup: {
-                            from: "users",
-                            localField: "owner",
-                            foreignField: "_id",
-                            as: "owner"
-                        }
-                    },
-                    {
-                        $unwind: "$owner"
-                    },
-                    {
-                        $project: {
-                            title: 1,
-                            thumbnail: 1,
-                            duration: 1,
-                            views: 1,
-                            createdAt: 1,
-                            "owner._id": 1,
-                            "owner.username": 1,
-                            "owner.fullName": 1,
-                            "owner.avatar": 1
-                        }
-                    }
-                ]
+                pipeline: videoPipeline // 🚨 Apply the secure sub-pipeline here!
             }
         }
     ]);
@@ -465,12 +499,10 @@ const getUserChannelProfile = asyncHandler(async (req, res) => {
         throw new ApiError(404, "User not found");
     }
 
-    // Since we pushed new videos to the END of the array in MongoDB, 
-    // we reverse it here so the most recently watched video is at the top!
     const history = user[0].watchHistory.reverse();
 
     return res.status(200).json(
-        new ApiResponse(200, history, "Watch history fetched successfully")
+        new ApiResponse(200, history, "Secure watch history fetched successfully")
     );
 });
 
@@ -485,6 +517,71 @@ const getUserChannelProfile = asyncHandler(async (req, res) => {
     );
 });
 
+const searchBusinesses = asyncHandler(async (req, res) => {
+    const { query } = req.query;
+
+    if (!query) {
+        return res.status(200).json(new ApiResponse(200, [], "No query provided"));
+    }
+
+    // Use aggregation to find businesses AND check the user's membership status with them
+    const businesses = await User.aggregate([
+        {
+            $match: {
+                role: "BUSINESS",
+                $or: [
+                    { username: { $regex: query, $options: "i" } },
+                    { fullName: { $regex: query, $options: "i" } }
+                ]
+            }
+        },
+        {
+            $lookup: {
+                from: "memberships",
+                let: { businessId: "$_id" },
+                pipeline: [
+                    {
+                        $match: {
+                            $expr: {
+                                $and: [
+                                    { $eq: ["$business", "$$businessId"] },
+                                    { $eq: ["$employee", new mongoose.Types.ObjectId(req.user._id)] }
+                                ]
+                            }
+                        }
+                    }
+                ],
+                as: "membershipData"
+            }
+        },
+        {
+            $addFields: {
+                // Extract the status if a membership exists, otherwise set to "NONE"
+                membershipStatus: {
+                    $cond: {
+                        if: { $gt: [{ $size: "$membershipData" }, 0] },
+                        then: { $arrayElemAt: ["$membershipData.status", 0] },
+                        else: "NONE"
+                    }
+                }
+            }
+        },
+        {
+            $project: {
+                _id: 1,
+                fullName: 1,
+                username: 1,
+                avatar: 1,
+                coverImage: 1,
+                membershipStatus: 1 // 🚨 Now the frontend knows the exact status!
+            }
+        }
+    ]);
+
+    return res.status(200).json(
+        new ApiResponse(200, businesses, "Businesses retrieved successfully")
+    );
+});
 
 
 export {
@@ -499,5 +596,6 @@ export {
     updateUserCoverImage,
     getUserChannelProfile,
     getWatchHistory,
-    clearWatchHistory
+    clearWatchHistory,
+    searchBusinesses
 }
