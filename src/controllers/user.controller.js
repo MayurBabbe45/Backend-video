@@ -5,7 +5,8 @@ import { uploadOnCloudinary, deleteFromCloudinary } from "../utils/cloudinary.js
 import { ApiResponse } from '../utils/ApiResponse.js';
 import jwt from "jsonwebtoken"
 import mongoose from "mongoose"
-
+import { InviteToken } from "../models/invite.model.js";
+import { Membership } from "../models/membership.model.js";
 
 const generateAccessAndRefreshTokens = async(userId)=>{
     try {
@@ -23,8 +24,8 @@ const generateAccessAndRefreshTokens = async(userId)=>{
 }
 
 const registerUser = asyncHandler(async(req, res) => {
-    // 🚨 NEW: Extract role from the request body
-    const { fullName, email, username, password, role } = req.body;
+    // 🚨 Extract role AND inviteToken from the request body
+    const { fullName, email, username, password, role, inviteToken } = req.body;
   
     if (
         [fullName, email, username, password].some((field) => field?.trim() === "")
@@ -62,7 +63,7 @@ const registerUser = asyncHandler(async(req, res) => {
         throw new ApiError(400, "CLOUDINARY ERROR: Failed to upload the avatar image to the cloud.");
     }
 
-    // 🚨 NEW: Save the role to the database
+    // Save the user and their role to the database
     const user = await User.create({
         fullName,
         avatar: avatar.url,
@@ -80,6 +81,27 @@ const registerUser = asyncHandler(async(req, res) => {
     if (!createdUser) {
         throw new ApiError(500, "Something went wrong while registering the user");
     }
+
+    // ================================================================
+    // 🚨 THE MAGIC LINK INTERCEPTOR
+    // ================================================================
+    // If an employee registers using a valid 48-hour invite link, 
+    // instantly grant them full corporate access to the Business's vault.
+    if (inviteToken && createdUser.role === "EMPLOYEE") {
+        const activeInvite = await InviteToken.findOne({ 
+            token: inviteToken,
+            expiresAt: { $gt: new Date() } // Double check time just in case of MongoDB TTL lag
+        });
+
+        if (activeInvite) {
+            await Membership.create({
+                business: activeInvite.business,
+                employee: createdUser._id,
+                status: "APPROVED"
+            });
+        }
+    }
+    // ================================================================
 
     return res.status(201).json(
         new ApiResponse(201, createdUser, "User registered successfully")

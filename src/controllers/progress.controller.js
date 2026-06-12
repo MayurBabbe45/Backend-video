@@ -67,8 +67,7 @@ export const syncVideoProgress = asyncHandler(async (req, res) => {
                 isCompleted
             }
         },
-        { new: true, upsert: true }
-    );
+        { returnDocument: 'after', upsert: true }    );
 
     return res.status(200).json(
         new ApiResponse(200, progress, "Progress aggregated and synced successfully")

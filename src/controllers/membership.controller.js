@@ -5,7 +5,8 @@ import { ApiResponse } from "../utils/ApiResponse.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import mongoose from "mongoose";
 import { emitNotification } from "../socket.js";
-
+import { InviteToken } from "../models/invite.model.js";
+import { randomBytes } from "node:crypto";
 // ========================================================
 // EMPLOYEE ACTIONS
 // ========================================================
@@ -141,5 +142,32 @@ export const getApprovedEmployees = asyncHandler(async (req, res) => {
 
     return res.status(200).json(
         new ApiResponse(200, employees, "Active directory fetched successfully")
+    );
+});
+
+export const generateInviteToken = asyncHandler(async (req, res) => {
+    // 1. Ensure only businesses can generate tokens
+    if (req.user.role !== "BUSINESS") {
+        throw new ApiError(403, "Only Business accounts can generate invite links.");
+    }
+
+    // 2. Generate a secure, 32-character random hex string
+    const rawToken = randomBytes(16).toString("hex");
+    // 3. Set expiration to 48 hours from exactly right now
+    const expirationDate = new Date(Date.now() + 48 * 60 * 60 * 1000);
+
+    // 4. Save to the database
+    const invite = await InviteToken.create({
+        token: rawToken,
+        business: req.user._id,
+        expiresAt: expirationDate
+    });
+
+    // 5. Construct the full URL the business can copy/paste to employees
+    // Replace with your production frontend URL later
+    const inviteLink = `http://localhost:5173/register?invite=${invite.token}`;
+
+    return res.status(201).json(
+        new ApiResponse(201, { inviteLink, expiresAt: expirationDate }, "Secure invite link generated")
     );
 });

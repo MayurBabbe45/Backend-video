@@ -5,7 +5,8 @@ import {
     getPendingRequests, 
     updateRequestStatus, 
     getMyRequests,
-    getApprovedEmployees
+    getApprovedEmployees,
+    generateInviteToken
 } from "../controllers/membership.controller.js";
 
 const router = Router();
@@ -45,5 +46,8 @@ router.route("/approved").get(
     restrictTo("BUSINESS"), 
     getApprovedEmployees
 );
+
+
+router.route("/generate-invite").post(verifyJWT, generateInviteToken);
 
 export default router;
