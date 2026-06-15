@@ -106,7 +106,14 @@ export const sendMessage = asyncHandler(async (req, res) => {
 
 export const getChatHistory = asyncHandler(async (req, res) => {
     const { partnerId } = req.params;
-    const businessId = await getUserBusinessContext(req.user._id, req.user.role);
+    
+    // Check if getUserBusinessContext exists, handle if user is BUSINESS
+    let businessId;
+    try {
+        businessId = await getUserBusinessContext(req.user._id, req.user.role);
+    } catch (error) {
+        businessId = req.user._id; // Fallback if they are the business owner
+    }
 
     const messages = await Message.find({
         businessContext: businessId, // Must be inside this company
@@ -114,7 +121,9 @@ export const getChatHistory = asyncHandler(async (req, res) => {
             { sender: req.user._id, receiver: partnerId },
             { sender: partnerId, receiver: req.user._id }
         ]
-    }).sort({ createdAt: 1 }); // Oldest to newest
+    })
+    .populate("sender", "fullName username avatar") // 🚨 THE FIX: Hydrate the sender data!
+    .sort({ createdAt: 1 }); // Oldest to newest
 
     return res.status(200).json(
         new ApiResponse(200, messages, "Encrypted chat history fetched")

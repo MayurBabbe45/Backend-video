@@ -196,3 +196,33 @@ export const generateInviteToken = asyncHandler(async (req, res) => {
         new ApiResponse(201, { inviteLink, expiresAt: expirationDate }, "Secure invite link generated")
     );
 });
+
+export const cancelAccessRequest = asyncHandler(async (req, res) => {
+    // 1. Find a pending request for this employee
+    const membership = await Membership.findOne({ 
+        employee: req.user._id, 
+        status: "PENDING" 
+    });
+
+    if (!membership) {
+        // 2. Security Check: Are they actually trying to leave an approved company?
+        const approvedMembership = await Membership.findOne({ 
+            employee: req.user._id, 
+            status: "APPROVED" 
+        });
+        
+        if (approvedMembership) {
+            throw new ApiError(403, "Action Denied: You cannot leave an organization once approved. Please contact your HR administrator to revoke your access.");
+        }
+        
+        throw new ApiError(404, "No pending request found.");
+    }
+
+    // 3. Delete the pending request, freeing the employee to search again
+    await Membership.findByIdAndDelete(membership._id);
+
+    return res.status(200).json(
+        new ApiResponse(200, {}, "Access request cancelled successfully.")
+    );
+});
+

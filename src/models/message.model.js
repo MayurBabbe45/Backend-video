@@ -12,7 +12,6 @@ const messageSchema = new Schema(
             ref: "User",
             required: true
         },
-        // 🚨 THE SILO: The organization this conversation belongs to
         businessContext: {
             type: Schema.Types.ObjectId,
             ref: "User",
@@ -27,11 +26,17 @@ const messageSchema = new Schema(
             default: false
         }
     },
-    { timestamps: true }
+    { timestamps: true } // 🚨 This automatically creates the 'createdAt' field
 );
 
 // Optimize queries for loading chat history quickly
 messageSchema.index({ sender: 1, receiver: 1 });
 messageSchema.index({ businessContext: 1 });
+
+// ============================================================================
+// 🚨 THE TTL INDEX: Auto-delete messages exactly 10 days after creation
+// 10 days = 864,000 seconds
+// ============================================================================
+messageSchema.index({ createdAt: 1 }, { expireAfterSeconds: 864000 });
 
 export const Message = mongoose.model("Message", messageSchema);

@@ -7,7 +7,8 @@ import {
     getMyRequests,
     getApprovedEmployees,
     generateInviteToken,
-    getMyMembershipStatus
+    getMyMembershipStatus,
+    cancelAccessRequest
 } from "../controllers/membership.controller.js";
 
 const router = Router();
@@ -51,5 +52,9 @@ router.route("/approved").get(
 router.route("/my-status").get(verifyJWT, getMyMembershipStatus);
 
 router.route("/generate-invite").post(verifyJWT, generateInviteToken);
+
+
+router.route("/cancel-request").delete(verifyJWT, cancelAccessRequest);
+
 
 export default router;
