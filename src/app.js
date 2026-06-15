@@ -27,6 +27,7 @@ import playlistRouter from './routes/playlist.routes.js';
 import dashboardRouter from './routes/dashboard.routes.js';
 import membershipRouter from "./routes/membership.routes.js";
 import progressRouter from "./routes/progress.routes.js";
+import chatRouter from "./routes/chat.routes.js";
 
 //routes declaration
 app.use("/api/v1/users",userRouter);
@@ -39,5 +40,6 @@ app.use("/api/v1/playlists", playlistRouter);
 app.use("/api/v1/dashboard", dashboardRouter);
 app.use("/api/v1/memberships", membershipRouter);
 app.use("/api/v1/progress", progressRouter);
+app.use("/api/v1/chat", chatRouter);
 
 export { app };
