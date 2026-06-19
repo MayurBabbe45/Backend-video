@@ -173,7 +173,8 @@ const logoutUser = asyncHandler(async(req,res)=>{
 
     const options = {
         httpOnly: true,
-        secure: true
+        secure: true,
+        sameSite: "none"
     }
 
     return res
@@ -195,7 +196,7 @@ const refreshAccessToken = asyncHandler(async(req,res)=>{
    try {
     const decodedToken = jwt.verify(
      incomingRefreshToken,
-     process.env.REFRESH_TOKEN_SECRET
+     process.env.REFRESH_TOKEN_SECRET || process.env.JWT_SECRET
     )
  
     const user = await User.findById(decodedToken?._id)
@@ -210,7 +211,8 @@ const refreshAccessToken = asyncHandler(async(req,res)=>{
  
     const options = {
      httpOnly:true,
-     secure:true
+     secure:true,
+     sameSite:"none"
     }
  
     const {accessToken,refreshToken} = await generateAccessAndRefreshTokens(user._id)

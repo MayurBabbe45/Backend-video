@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { verifyJWT, restrictTo } from "../middlewares/auth.Middleware.js";
+import { verifyJWT, restrictTo } from "../middlewares/auth.middleware.js";
 import { 
     requestAccess, 
     getPendingRequests, 

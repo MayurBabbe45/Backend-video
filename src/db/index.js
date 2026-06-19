@@ -8,9 +8,9 @@ dns.setServers(["8.8.8.8", "1.1.1.1"]);
 
 const connectDB = async () => {
     try {
-        const uri = process.env.MONGODB_URI;
+        const uri = process.env.MONGODB_URI || process.env.MONGO_URI;
         if (!uri) {
-            throw new Error("MONGODB_URI is not defined in environment variables.");
+            throw new Error("MONGODB_URI or MONGO_URI is not defined in environment variables.");
         }
 
         const dbName = process.env.MONGODB_DB_NAME || DB_NAME;

@@ -81,9 +81,9 @@ userSchema.methods.generateAccessToken = function(){
             fullName: this.fullName,
             role: this.role // 🚨 CRITICAL: Added role to the token payload for fast RBAC validation
         },
-        process.env.ACCESS_TOKEN_SECRET,
+        process.env.ACCESS_TOKEN_SECRET || process.env.JWT_SECRET,
         {
-            expiresIn: process.env.ACCESS_TOKEN_EXPIRES_IN
+            expiresIn: process.env.ACCESS_TOKEN_EXPIRES_IN || "1d"
         }
     )
 };
@@ -93,9 +93,9 @@ userSchema.methods.generateRefreshToken = function(){
         {
             _id: this._id,
         },
-        process.env.REFRESH_TOKEN_SECRET,
+        process.env.REFRESH_TOKEN_SECRET || process.env.JWT_SECRET,
         {
-            expiresIn: process.env.REFRESH_TOKEN_EXPIRES_IN
+            expiresIn: process.env.REFRESH_TOKEN_EXPIRES_IN || "10d"
         }
     )
 };
